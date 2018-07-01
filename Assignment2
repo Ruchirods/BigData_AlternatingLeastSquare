@@ -1,0 +1,39 @@
+from pyspark.mllib.recommendation import ALS,MatrixFactorizationModel,Rating
+from pyspark import SparkContext,SparkConf
+import numpy as np
+from pyspark.mllib.evaluation import BinaryClassificationMetrics
+
+result=np.zeros((20,3))
+conf=SparkConf().setAppName('Assignment2').setMaster('local[*]')
+sc=SparkContext(conf=conf)
+rawdata=sc.textFile("/home/cloudera/Downloads/ratings.csv")
+header=rawdata.first()
+data=rawdata.filter(lambda line:line!=header)
+ratings=data.map(lambda l:l.split(','))\
+	.map(lambda i:Rating(int(i[0]),int(i[1]),float(i[2])))
+
+training,test=ratings.randomSplit(weights=[0.9,0.1],seed=1)
+training.cache()
+test.cache()
+i=0
+
+for rank in range(1,5):
+	for iterations in range(10,15):
+		model = ALS.train(training, rank, iterations)
+		testdata = test.map(lambda p: (p[0], p[1]))
+		predictions = model.predictAll(testdata).map(lambda r: ((r[0], r[1]), r[2]))
+		ratesAndPreds = test.map(lambda r: ((r[0], r[1]), r[2])).join(predictions)
+		#print(ratesAndPreds.take(10))
+		#metrics = BinaryClassificationMetrics(ratesAndPreds)
+		#print(metrics.areaUnderROC)
+		MSE = ratesAndPreds.map(lambda r: (r[1][0] - r[1][1]) ** 2)
+		MSE=MSE.mean()
+		result[i][0] = rank
+		result[i][1] = iterations
+		result[i][2] = float(MSE)
+		i = i + 1
+
+print(result)
+# print metrics.areaUnderROC
+print("********************************************")
+# print ratesAndPreds.count()
